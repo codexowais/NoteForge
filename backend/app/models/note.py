@@ -100,6 +100,25 @@ class HealthResponse(BaseModel):
     ollama_status: str
 
 
+class SavedNoteMetadata(BaseModel):
+    """Lightweight metadata for sidebar listing."""
+
+    id: str
+    video_id: str
+    youtube_url: str
+    title: str
+    created_at: str
+
+
+class SavedNoteResponse(GenerateNotesResponse):
+    """Full note with persistence metadata."""
+
+    id: str
+    video_id: str
+    youtube_url: str
+    created_at: str
+
+
 class ErrorResponse(BaseModel):
     """Standardized error response."""
 

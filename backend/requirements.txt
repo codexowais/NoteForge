@@ -17,5 +17,8 @@ httpx>=0.28.0,<1.0.0
 # Environment
 python-dotenv>=1.0.0,<2.0.0
 
+# Database
+aiosqlite>=0.21.0,<1.0.0
+
 # CORS
 python-multipart>=0.0.20,<1.0.0

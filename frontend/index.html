@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoteForge — AI-Powered Lecture Notes</title>
+    <meta name="description" content="Transform YouTube lectures into structured, revision-ready study notes using local AI.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <div class="app" id="app">
+        <!-- ── Sidebar ──────────────────────────────────────── -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 3L2 9l10 6 10-6-10-6z"/>
+                            <path d="M2 17l10 6 10-6"/>
+                            <path d="M2 13l10 6 10-6"/>
+                        </svg>
+                    </div>
+                    <span class="logo-text">NoteForge</span>
+                </div>
+            </div>
+
+            <button class="new-note-btn" id="newNoteBtn" title="Generate new notes">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>New Notes</span>
+            </button>
+
+            <div class="sidebar-search">
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="text" id="searchInput" placeholder="Search notes...">
+            </div>
+
+            <div class="sidebar-list" id="notesList">
+                <div class="empty-state" id="emptyState">
+                    <div class="empty-icon">📝</div>
+                    <p>No notes yet</p>
+                    <p class="empty-subtitle">Generate your first notes!</p>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="sidebar-footer-text">
+                    <span>Powered by Ollama</span>
+                    <span class="status-dot" id="ollamaStatus" title="Ollama status"></span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ── Sidebar Overlay (mobile) ─────────────────────── -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <!-- ── Main Content ─────────────────────────────────── -->
+        <main class="main-content" id="mainContent">
+            <!-- Top Bar -->
+            <div class="top-bar">
+                <button class="mobile-menu-btn" id="mobileMenuBtn" title="Toggle sidebar">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                </button>
+                <form class="url-form" id="urlForm">
+                    <div class="url-input-group">
+                        <svg class="url-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        <input type="url" id="urlInput" placeholder="Paste YouTube URL here..." required autocomplete="off">
+                        <button type="submit" id="submitBtn">
+                            <span class="btn-text">Generate</span>
+                            <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Landing View -->
+            <div class="view landing-view active" id="landingView">
+                <div class="landing-content">
+                    <div class="landing-badge">AI-Powered Study Notes</div>
+                    <h1 class="landing-title">Transform Lectures<br>into <span class="gradient-text">Knowledge</span></h1>
+                    <p class="landing-subtitle">Paste a YouTube lecture URL and get structured, revision-ready notes powered by local AI — completely private.</p>
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon">📚</div>
+                            <h3>Structured Topics</h3>
+                            <p>Deep breakdowns organized by key concepts and subtopics</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">📖</div>
+                            <h3>Definitions</h3>
+                            <p>Technical terms clearly defined as used in the lecture</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🎯</div>
+                            <h3>Key Takeaways</h3>
+                            <p>Critical insights and actionable points to remember</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">💼</div>
+                            <h3>Interview Prep</h3>
+                            <p>Real interview questions with suggested answers</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading View -->
+            <div class="view loading-view" id="loadingView">
+                <div class="loading-content">
+                    <div class="loading-spinner">
+                        <div class="spinner-ring"></div>
+                        <div class="spinner-ring"></div>
+                        <div class="spinner-ring"></div>
+                    </div>
+                    <h2>Generating Notes</h2>
+                    <p class="loading-step" id="loadingStep">Extracting transcript from YouTube...</p>
+                    <div class="loading-progress">
+                        <div class="progress-track">
+                            <div class="progress-bar" id="progressBar"></div>
+                        </div>
+                    </div>
+                    <p class="loading-hint">This may take 1–3 minutes depending on lecture length</p>
+                </div>
+            </div>
+
+            <!-- Notes View -->
+            <div class="view notes-view" id="notesView">
+                <div class="notes-header" id="notesHeader"></div>
+                <div class="notes-actions" id="notesActions"></div>
+                <div class="notes-content" id="notesContent"></div>
+            </div>
+
+            <!-- Error View -->
+            <div class="view error-view" id="errorView">
+                <div class="error-content">
+                    <div class="error-icon">⚠️</div>
+                    <h2>Something went wrong</h2>
+                    <p class="error-message" id="errorMessage"></p>
+                    <button class="retry-btn" id="retryBtn">Try Again</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>
