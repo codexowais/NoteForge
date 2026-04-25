@@ -3,124 +3,137 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NoteForge — AI-Powered Lecture Notes</title>
+    <title>NoteForge - Forge Smarter. Think Bigger.</title>
     <meta name="description" content="Transform YouTube lectures into structured, revision-ready study notes using local AI.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/styles.css">
-    <!-- jsPDF for PDF export -->
     <script src="https://unpkg.com/jspdf@latest/dist/jspdf.umd.min.js"></script>
 </head>
 <body>
+    <header class="topbar">
+        <button class="mobile-menu-btn" id="mobileMenuBtn" title="Toggle sidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+        </button>
+
+        <div class="logo">
+            <div class="logo-icon">N</div>
+            <span class="logo-text">NoteForge</span>
+        </div>
+
+        <form class="url-form" id="urlForm">
+            <div class="url-input-group">
+                <svg class="url-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+                <input type="url" id="urlInput" placeholder="Paste YouTube URL here..." required autocomplete="off">
+            </div>
+            <select class="lang-select" id="langSelect" title="Transcript language">
+                <option value="">Auto</option>
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="hi">Hindi</option>
+                <option value="pt">Portuguese</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="zh">Chinese</option>
+                <option value="ar">Arabic</option>
+                <option value="ru">Russian</option>
+                <option value="it">Italian</option>
+            </select>
+            <button type="submit" id="submitBtn">
+                <span class="btn-text">Generate</span>
+                <svg class="btn-arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 12h14"/>
+                    <path d="m12 5 7 7-7 7"/>
+                </svg>
+            </button>
+        </form>
+    </header>
+
     <div class="app" id="app">
-        <!-- ── Sidebar ──────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <div class="logo">
-                    <div class="logo-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 3L2 9l10 6 10-6-10-6z"/>
-                            <path d="M2 17l10 6 10-6"/>
-                            <path d="M2 13l10 6 10-6"/>
-                        </svg>
-                    </div>
-                    <span class="logo-text">NoteForge</span>
-                </div>
+            <div class="sidebar-actions">
+                <button class="new-note-btn" id="newNoteBtn" title="Generate new notes">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    <span>New Notes</span>
+                </button>
+
+                <button class="batch-note-btn" id="batchNoteBtn" title="Batch generate from multiple URLs">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="3" width="20" height="14" rx="2"/>
+                        <line x1="8" y1="21" x2="16" y2="21"/>
+                        <line x1="12" y1="17" x2="12" y2="21"/>
+                    </svg>
+                    <span>Batch Process</span>
+                </button>
             </div>
 
-            <button class="new-note-btn" id="newNoteBtn" title="Generate new notes">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                <span>New Notes</span>
-            </button>
-
-            <button class="batch-note-btn" id="batchNoteBtn" title="Batch generate from multiple URLs">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                <span>Batch Process</span>
-            </button>
-
             <div class="sidebar-search">
-                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="m21 21-4.3-4.3"/>
+                </svg>
                 <input type="text" id="searchInput" placeholder="Search notes...">
             </div>
 
+            <div class="sidebar-label">Recent</div>
             <div class="sidebar-list" id="notesList">
                 <div class="empty-state" id="emptyState">
-                    <div class="empty-icon">📝</div>
+                    <div class="empty-icon">NF</div>
                     <p>No notes yet</p>
-                    <p class="empty-subtitle">Generate your first notes!</p>
+                    <p class="empty-subtitle">Generate your first notes.</p>
                 </div>
             </div>
 
             <div class="sidebar-footer">
                 <div class="sidebar-footer-text">
-                    <span>Powered by Ollama</span>
                     <span class="status-dot" id="ollamaStatus" title="Ollama status"></span>
+                    <span>Powered by Ollama</span>
                 </div>
             </div>
         </aside>
 
-        <!-- ── Sidebar Overlay (mobile) ─────────────────────── -->
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-        <!-- ── Main Content ─────────────────────────────────── -->
         <main class="main-content" id="mainContent">
-            <!-- Top Bar -->
-            <div class="top-bar">
-                <button class="mobile-menu-btn" id="mobileMenuBtn" title="Toggle sidebar">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-                </button>
-                <form class="url-form" id="urlForm">
-                    <div class="url-input-group">
-                        <svg class="url-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                        <input type="url" id="urlInput" placeholder="Paste YouTube URL here..." required autocomplete="off">
-                        <select class="lang-select" id="langSelect" title="Transcript language">
-                            <option value="">Auto</option>
-                            <option value="en">English</option>
-                            <option value="es">Español</option>
-                            <option value="fr">Français</option>
-                            <option value="de">Deutsch</option>
-                            <option value="hi">हिन्दी</option>
-                            <option value="pt">Português</option>
-                            <option value="ja">日本語</option>
-                            <option value="ko">한국어</option>
-                            <option value="zh">中文</option>
-                            <option value="ar">العربية</option>
-                            <option value="ru">Русский</option>
-                            <option value="it">Italiano</option>
-                        </select>
-                        <button type="submit" id="submitBtn">
-                            <span class="btn-text">Generate</span>
-                            <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            <!-- Landing View -->
             <div class="view landing-view active" id="landingView">
                 <div class="landing-content">
-                    <div class="landing-badge">AI-Powered Study Notes</div>
-                    <h1 class="landing-title">Transform Lectures<br>into <span class="gradient-text">Knowledge</span></h1>
-                    <p class="landing-subtitle">Paste a YouTube lecture URL and get structured, revision-ready notes powered by local AI — completely private.</p>
+                    <div class="landing-badge">
+                        <span class="badge-dot"></span>
+                        AI-Powered Study Notes
+                    </div>
+                    <h1 class="landing-title">Transform Lectures<br>into <span>Knowledge</span></h1>
+                    <p class="landing-subtitle">Paste a YouTube lecture URL and get structured, revision-ready notes powered by local AI - completely private.</p>
                     <div class="features-grid">
                         <div class="feature-card">
-                            <div class="feature-icon">📚</div>
+                            <div class="feature-icon">01</div>
                             <h3>Structured Topics</h3>
                             <p>Deep breakdowns organized by key concepts and subtopics</p>
                         </div>
                         <div class="feature-card">
-                            <div class="feature-icon">📖</div>
+                            <div class="feature-icon">02</div>
                             <h3>Definitions</h3>
                             <p>Technical terms clearly defined as used in the lecture</p>
                         </div>
                         <div class="feature-card">
-                            <div class="feature-icon">🧠</div>
+                            <div class="feature-icon">03</div>
                             <h3>Quiz Mode</h3>
                             <p>Test your understanding with AI-generated MCQ quizzes</p>
                         </div>
                         <div class="feature-card">
-                            <div class="feature-icon">🌍</div>
+                            <div class="feature-icon">04</div>
                             <h3>Multi-Language</h3>
                             <p>Support for transcripts in 12+ languages</p>
                         </div>
@@ -128,7 +141,6 @@
                 </div>
             </div>
 
-            <!-- Loading View -->
             <div class="view loading-view" id="loadingView">
                 <div class="loading-content">
                     <div class="loading-spinner">
@@ -143,21 +155,19 @@
                             <div class="progress-bar" id="progressBar"></div>
                         </div>
                     </div>
-                    <p class="loading-hint">This may take 1–3 minutes depending on lecture length</p>
+                    <p class="loading-hint">This may take 1-3 minutes depending on lecture length</p>
                 </div>
             </div>
 
-            <!-- Notes View -->
             <div class="view notes-view" id="notesView">
                 <div class="notes-header" id="notesHeader"></div>
                 <div class="notes-actions" id="notesActions"></div>
                 <div class="notes-content" id="notesContent"></div>
             </div>
 
-            <!-- Error View -->
             <div class="view error-view" id="errorView">
                 <div class="error-content">
-                    <div class="error-icon">⚠️</div>
+                    <div class="error-icon">!</div>
                     <h2>Something went wrong</h2>
                     <p class="error-message" id="errorMessage"></p>
                     <button class="retry-btn" id="retryBtn">Try Again</button>
@@ -166,36 +176,35 @@
         </main>
     </div>
 
-    <!-- Batch Modal -->
     <div class="modal-overlay" id="batchModal">
         <div class="modal">
             <div class="modal-header">
-                <h2>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                    Batch Process
-                </h2>
-                <button class="modal-close" id="batchModalClose">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+                <h2>Batch Process</h2>
+                <button class="modal-close" id="batchModalClose" title="Close">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M18 6L6 18"/>
+                        <path d="M6 6l12 12"/>
+                    </svg>
                 </button>
             </div>
             <div class="modal-body">
-                <p class="modal-description">Paste multiple YouTube URLs, one per line (max 10).</p>
-                <textarea class="batch-textarea" id="batchUrlsInput" placeholder="https://youtube.com/watch?v=...&#10;https://youtube.com/watch?v=...&#10;https://youtube.com/watch?v=..." rows="6"></textarea>
+                <p class="modal-description">Paste multiple YouTube URLs, one per line. Maximum 10.</p>
+                <textarea class="batch-textarea" id="batchUrlsInput" placeholder="https://youtube.com/watch?v=...&#10;https://youtube.com/watch?v=..." rows="6"></textarea>
                 <div class="batch-lang-row">
-                    <label>Language:</label>
+                    <label>Language</label>
                     <select class="lang-select" id="batchLangSelect">
-                        <option value="">Auto-detect</option>
+                        <option value="">Auto</option>
                         <option value="en">English</option>
-                        <option value="es">Español</option>
-                        <option value="fr">Français</option>
-                        <option value="de">Deutsch</option>
-                        <option value="hi">हिन्दी</option>
-                        <option value="pt">Português</option>
-                        <option value="ja">日本語</option>
-                        <option value="ko">한국어</option>
-                        <option value="zh">中文</option>
-                        <option value="ar">العربية</option>
-                        <option value="ru">Русский</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="hi">Hindi</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="ja">Japanese</option>
+                        <option value="ko">Korean</option>
+                        <option value="zh">Chinese</option>
+                        <option value="ar">Arabic</option>
+                        <option value="ru">Russian</option>
                     </select>
                 </div>
                 <div class="batch-progress" id="batchProgress" style="display:none;">
@@ -209,27 +218,28 @@
             <div class="modal-footer">
                 <button class="modal-btn-secondary" id="batchCancelBtn">Cancel</button>
                 <button class="modal-btn-primary" id="batchSubmitBtn">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                     Process All
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <path d="M5 12h14"/>
+                        <path d="m12 5 7 7-7 7"/>
+                    </svg>
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- Quiz Modal -->
     <div class="modal-overlay" id="quizModal">
         <div class="modal modal-quiz">
             <div class="modal-header">
-                <h2>
-                    <span class="quiz-icon">🧠</span>
-                    <span id="quizTitle">Quiz Mode</span>
-                </h2>
-                <button class="modal-close" id="quizModalClose">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+                <h2 id="quizTitle">Quiz Mode</h2>
+                <button class="modal-close" id="quizModalClose" title="Close">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M18 6L6 18"/>
+                        <path d="M6 6l12 12"/>
+                    </svg>
                 </button>
             </div>
             <div class="modal-body" id="quizBody">
-                <!-- Quiz content rendered by JS -->
                 <div class="quiz-loading" id="quizLoading">
                     <div class="loading-spinner" style="width:40px;height:40px;">
                         <div class="spinner-ring"></div>
@@ -241,7 +251,6 @@
         </div>
     </div>
 
-    <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
 
     <script src="/js/api.js"></script>

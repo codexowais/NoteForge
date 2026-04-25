@@ -112,7 +112,7 @@ async def _call_ollama(
 
     Args:
         prompt: The full prompt string.
-        model: Ollama model name (e.g. "qwen2.5").
+        model: Ollama model name.
         timeout: Request timeout in seconds.
 
     Returns:
@@ -125,10 +125,6 @@ async def _call_ollama(
         "model": model,
         "prompt": prompt,
         "stream": False,
-        "options": {
-            "temperature": settings.ollama_temperature,
-            "num_predict": settings.ollama_max_tokens,
-        },
     }
 
     logger.info("Sending inference request to Ollama [model=%s]", model)
@@ -140,22 +136,34 @@ async def _call_ollama(
                 json=payload,
             )
             response.raise_for_status()
-    except httpx.ConnectError:
+    except httpx.ConnectError as e:
         raise OllamaConnectionError(
             f"Cannot connect to Ollama at {settings.ollama_base_url}. "
             "Ensure Ollama is running: `ollama serve`"
-        )
-    except httpx.TimeoutException:
+        ) from e
+    except httpx.TimeoutException as e:
         raise OllamaInferenceError(
             f"Ollama request timed out after {timeout}s for model {model}. "
             "Try a shorter transcript or increase OLLAMA_TIMEOUT."
-        )
+        ) from e
     except httpx.HTTPStatusError as e:
         raise OllamaInferenceError(
-            f"Ollama returned HTTP {e.response.status_code}: {e.response.text[:300]}"
-        )
+            f"Ollama returned HTTP {e.response.status_code} for model {model}: "
+            f"{e.response.text[:300]}"
+        ) from e
+    except httpx.RequestError as e:
+        raise OllamaInferenceError(
+            f"Ollama request failed for model {model}: {e}"
+        ) from e
 
-    data = response.json()
+    try:
+        data = response.json()
+    except json.JSONDecodeError as e:
+        raise OllamaInferenceError(
+            f"Ollama returned invalid JSON for model {model}: "
+            f"{response.text[:300]}"
+        ) from e
+
     raw_response = data.get("response", "")
 
     if not raw_response.strip():

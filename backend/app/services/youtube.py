@@ -104,24 +104,15 @@ def fetch_transcript(
         languages = ["en"]
 
     try:
-        transcript_list = _yt_api.get_transcript(
-            video_id, languages=languages
-        )
+        transcript_list = _yt_api.fetch(video_id, languages=languages)
     except TranscriptsDisabled:
         raise TranscriptUnavailableError(
             f"Transcripts are disabled for video: {video_id}"
         )
     except NoTranscriptFound:
-        # Attempt auto-generated fallback
-        try:
-            transcript_entries = _yt_api.list_transcripts(video_id)
-            transcript = transcript_entries.find_generated_transcript(languages)
-            transcript_list = transcript.fetch()
-        except Exception as e:
-            raise TranscriptUnavailableError(
-                f"No transcript found for video {video_id}. "
-                f"Tried manual and auto-generated. Error: {e}"
-            )
+        raise TranscriptUnavailableError(
+            f"No transcript found for video {video_id} in languages: {languages}"
+        )
     except VideoUnavailable:
         raise TranscriptUnavailableError(
             f"Video is unavailable: {video_id}"
