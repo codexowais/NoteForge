@@ -206,10 +206,10 @@ NoteForge is designed with privacy as a core principle:
 
 ## 🗺️ Roadmap
 
-- [ ] PDF export with styled formatting
+- [x] PDF export with styled formatting
 - [ ] Batch processing (multiple URLs at once)
 - [ ] Direct video upload support (local files)
-- [ ] Quiz mode — test yourself on generated content
+- [x] Quiz mode — test yourself on generated content
 - [ ] Flashcard generation (Anki-compatible)
 - [ ] Multi-language transcript support
 - [ ] Chrome extension for one-click note generation
