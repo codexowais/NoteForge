@@ -11,11 +11,49 @@ const api = {
      * Generate notes from a YouTube URL.
      * POST /api/v1/generate-notes
      */
-    async generateNotes(youtubeUrl) {
+    async generateNotes(youtubeUrl, language = null) {
+        const body = { youtube_url: youtubeUrl };
+        if (language) body.language = language;
+
         const res = await fetch(`${API_BASE}/generate-notes`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ youtube_url: youtubeUrl }),
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `Server error (${res.status})`);
+        }
+        return res.json();
+    },
+
+    /**
+     * Batch generate notes for multiple YouTube URLs.
+     * POST /api/v1/batch-generate
+     */
+    async batchGenerate(youtubeUrls, language = null) {
+        const body = { youtube_urls: youtubeUrls };
+        if (language) body.language = language;
+
+        const res = await fetch(`${API_BASE}/batch-generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `Server error (${res.status})`);
+        }
+        return res.json();
+    },
+
+    /**
+     * Generate quiz from a saved note.
+     * POST /api/v1/notes/:id/quiz
+     */
+    async generateQuiz(noteId) {
+        const res = await fetch(`${API_BASE}/notes/${noteId}/quiz`, {
+            method: 'POST',
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));

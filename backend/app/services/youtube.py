@@ -80,6 +80,7 @@ def extract_video_id(url: str) -> str:
 def fetch_transcript(
     video_id: str,
     languages: Optional[list[str]] = None,
+    language: Optional[str] = None,
 ) -> str:
     """
     Fetch and join the transcript for a YouTube video.
@@ -89,6 +90,7 @@ def fetch_transcript(
     Args:
         video_id: 11-character YouTube video ID.
         languages: Preferred transcript languages (defaults to English).
+        language: Single language code override (takes priority over languages list).
 
     Returns:
         Full transcript as a single concatenated string.
@@ -96,7 +98,9 @@ def fetch_transcript(
     Raises:
         TranscriptUnavailableError: If the transcript cannot be fetched.
     """
-    if languages is None:
+    if language:
+        languages = [language, "en"] if language != "en" else ["en"]
+    elif languages is None:
         languages = ["en"]
 
     try:
@@ -154,12 +158,16 @@ def fetch_transcript(
     return full_text
 
 
-def get_transcript_from_url(url: str) -> tuple[str, str]:
+def get_transcript_from_url(
+    url: str,
+    language: Optional[str] = None,
+) -> tuple[str, str]:
     """
     High-level helper: URL → (video_id, transcript_text).
 
     Args:
         url: Full YouTube URL.
+        language: Optional language code for transcript.
 
     Returns:
         Tuple of (video_id, transcript_text).
@@ -169,5 +177,5 @@ def get_transcript_from_url(url: str) -> tuple[str, str]:
         TranscriptUnavailableError: If the transcript cannot be fetched.
     """
     video_id = extract_video_id(url)
-    transcript = fetch_transcript(video_id)
+    transcript = fetch_transcript(video_id, language=language)
     return video_id, transcript

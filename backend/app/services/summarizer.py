@@ -17,9 +17,12 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Load prompt template once at module level
+# Load prompt templates once at module level
 _PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "notes_prompt.txt"
 _PROMPT_TEMPLATE: str = _PROMPT_PATH.read_text(encoding="utf-8")
+
+_QUIZ_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "quiz_prompt.txt"
+_QUIZ_PROMPT_TEMPLATE: str = _QUIZ_PROMPT_PATH.read_text(encoding="utf-8")
 
 
 class OllamaServiceError(Exception):
@@ -211,4 +214,44 @@ async def generate_notes(transcript: str) -> dict[str, Any]:
             f"Both models failed. Primary [{settings.ollama_primary_model}] "
             f"and fallback [{settings.ollama_fallback_model}] "
             f"could not generate valid notes. Last error: {e}"
+        )
+
+
+async def generate_quiz(notes_content: str) -> dict[str, Any]:
+    """
+    Generate quiz questions from structured note content using Ollama.
+
+    Args:
+        notes_content: Stringified notes content for quiz generation.
+
+    Returns:
+        Parsed JSON dict with quiz questions.
+
+    Raises:
+        OllamaConnectionError: If Ollama server is unreachable.
+        OllamaInferenceError: If both models fail.
+    """
+    prompt = _QUIZ_PROMPT_TEMPLATE.replace("{notes_content}", notes_content)
+
+    # ── Try primary model ────────────────────────────────────────
+    try:
+        raw = await _call_ollama(prompt, settings.ollama_primary_model)
+        return _extract_json(raw)
+    except OllamaConnectionError:
+        raise
+    except OllamaServiceError as e:
+        logger.warning(
+            "Primary model [%s] failed for quiz: %s — trying fallback [%s]",
+            settings.ollama_primary_model,
+            e,
+            settings.ollama_fallback_model,
+        )
+
+    # ── Try fallback model ───────────────────────────────────────
+    try:
+        raw = await _call_ollama(prompt, settings.ollama_fallback_model)
+        return _extract_json(raw)
+    except OllamaServiceError as e:
+        raise OllamaInferenceError(
+            f"Both models failed to generate quiz. Last error: {e}"
         )

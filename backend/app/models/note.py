@@ -5,7 +5,7 @@ Request/Response schemas for the notes generation API.
 Strict validation ensures clean data flow throughout the system.
 """
 
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -21,6 +21,11 @@ class GenerateNotesRequest(BaseModel):
         min_length=10,
         description="Full YouTube video URL",
         examples=["https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
+    )
+    language: Optional[str] = Field(
+        default=None,
+        description="Preferred transcript language code (e.g. 'en', 'es', 'hi'). Auto-detected if not specified.",
+        examples=["en", "es", "hi", "fr"],
     )
 
 
@@ -124,3 +129,59 @@ class ErrorResponse(BaseModel):
 
     error: str
     detail: Optional[str] = None
+
+
+# ── Batch Processing Models ──────────────────────────────────────
+
+
+class BatchGenerateRequest(BaseModel):
+    """Request to generate notes for multiple YouTube URLs."""
+
+    youtube_urls: List[str] = Field(
+        ...,
+        min_length=1,
+        max_length=10,
+        description="List of YouTube URLs (max 10)",
+    )
+    language: Optional[str] = Field(
+        default=None,
+        description="Preferred transcript language code for all videos",
+    )
+
+
+class BatchItemResult(BaseModel):
+    """Result for a single URL in a batch."""
+
+    youtube_url: str
+    status: Literal["success", "error"]
+    note: Optional[SavedNoteResponse] = None
+    error: Optional[str] = None
+
+
+class BatchGenerateResponse(BaseModel):
+    """Response from batch note generation."""
+
+    total: int
+    succeeded: int
+    failed: int
+    results: List[BatchItemResult]
+
+
+# ── Quiz Models ──────────────────────────────────────────────────
+
+
+class QuizQuestion(BaseModel):
+    """A single multiple-choice quiz question."""
+
+    question: str
+    options: List[str] = Field(..., min_length=4, max_length=4)
+    correct_index: int = Field(..., ge=0, le=3)
+    explanation: str
+
+
+class QuizResponse(BaseModel):
+    """Quiz generated from a saved note."""
+
+    note_id: str
+    note_title: str
+    questions: List[QuizQuestion]
