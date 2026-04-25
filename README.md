@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="assets/banner.png" alt="NoteForge Banner" width="100%" />
-</p>
+
 
 <p align="center">
   <strong>Transform YouTube lectures into structured, revision-ready study notes — powered by local AI.</strong>
@@ -28,9 +26,7 @@ NoteForge is an **AI-powered lecture intelligence system** that takes any YouTub
 
 Paste a YouTube URL. Get back organized topics, definitions, formulas, examples, key takeaways, interview questions, and curated resources. All in seconds.
 
-<p align="center">
-  <img src="assets/screenshot.png" alt="NoteForge Screenshot" width="90%" style="border-radius: 12px;" />
-</p>
+
 
 ---
 
