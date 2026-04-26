@@ -41,6 +41,12 @@ async def save_note(
     """
     note_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
+    title = notes_data.get("title")
+    summary = notes_data.get("summary")
+    if not isinstance(title, str) or not title.strip():
+        raise ValueError("Cannot save note without a non-empty title")
+    if not isinstance(summary, str) or not summary.strip():
+        raise ValueError("Cannot save note without a non-empty summary")
 
     async with aiosqlite.connect(str(DB_PATH)) as db:
         await db.execute(
@@ -56,8 +62,8 @@ async def save_note(
                 note_id,
                 video_id,
                 youtube_url,
-                notes_data.get("title", "Untitled"),
-                notes_data.get("summary", ""),
+                title.strip(),
+                summary.strip(),
                 json.dumps(notes_data.get("topics", [])),
                 json.dumps(notes_data.get("definitions", [])),
                 json.dumps(notes_data.get("formulas", [])),
@@ -80,6 +86,8 @@ async def save_note(
         "youtube_url": youtube_url,
         "created_at": now,
         **notes_data,
+        "title": title.strip(),
+        "summary": summary.strip(),
     }
     return result
 

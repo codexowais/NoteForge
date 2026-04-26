@@ -27,19 +27,16 @@ _QUIZ_PROMPT_TEMPLATE: str = _QUIZ_PROMPT_PATH.read_text(encoding="utf-8")
 
 class OllamaServiceError(Exception):
     """Base exception for Ollama inference failures."""
-
     pass
 
 
 class OllamaConnectionError(OllamaServiceError):
     """Raised when Ollama server is unreachable."""
-
     pass
 
 
 class OllamaInferenceError(OllamaServiceError):
     """Raised when model inference fails or returns invalid output."""
-
     pass
 
 
@@ -63,27 +60,70 @@ def _build_prompt(transcript: str) -> str:
     return _PROMPT_TEMPLATE.replace("{transcript}", transcript)
 
 
+def _unwrap_nested(data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Unwrap common single-key wrapper dicts that LLMs sometimes produce.
+
+    Handles cases like:
+      {"notes": {"title": ...}}
+      {"response": {"title": ...}}
+      {"result": {"title": ...}}
+      {"data": {"title": ...}}
+      {"lecture_notes": {"title": ...}}
+      {"structured_notes": {"title": ...}}
+    """
+    # Already a valid notes object
+    if "title" in data or "summary" in data:
+        return data
+
+    # Check common wrapper keys
+    wrapper_keys = (
+        "notes", "note", "structured_notes", "lecture_notes",
+        "response", "result", "data", "output", "content",
+    )
+    for key in wrapper_keys:
+        nested = data.get(key)
+        if isinstance(nested, dict):
+            logger.debug("Unwrapped LLM output from wrapper key '%s'", key)
+            return nested
+
+    # Single-key dict — unwrap whatever it is
+    if len(data) == 1:
+        only_value = next(iter(data.values()))
+        if isinstance(only_value, dict):
+            logger.debug("Unwrapped single-key LLM wrapper")
+            return only_value
+
+    return data
+
+
 def _extract_json(raw_text: str) -> dict[str, Any]:
     """
     Extract and parse JSON from LLM response text.
 
-    Handles cases where the model wraps JSON in markdown code fences
-    or includes preamble text.
+    Handles:
+    - Markdown code fences (```json ... ```)
+    - Preamble text before JSON
+    - Nested wrapper objects
     """
     text = raw_text.strip()
 
+    # Log raw output for debugging
+    logger.debug("Raw LLM response (first 800 chars): %s", text[:800])
+
     # Strip markdown code fences if present
     if text.startswith("```"):
-        # Remove opening fence (with optional language tag)
-        first_newline = text.index("\n")
-        text = text[first_newline + 1 :]
-        # Remove closing fence
+        first_newline = text.find("\n")
+        if first_newline != -1:
+            text = text[first_newline + 1:]
         if text.endswith("```"):
             text = text[:-3].strip()
 
     # Try direct parse first
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return _unwrap_nested(parsed)
     except json.JSONDecodeError:
         pass
 
@@ -92,7 +132,9 @@ def _extract_json(raw_text: str) -> dict[str, Any]:
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
         try:
-            return json.loads(text[start : end + 1])
+            parsed = json.loads(text[start:end + 1])
+            if isinstance(parsed, dict):
+                return _unwrap_nested(parsed)
         except json.JSONDecodeError:
             pass
 
@@ -125,6 +167,71 @@ async def _call_ollama(
         "model": model,
         "prompt": prompt,
         "stream": False,
+        # Structured schema forces qwen2.5:7b to fill real content into
+        # every field instead of returning a generic skeleton.
+        "format": {
+            "type": "object",
+            "properties": {
+                "title":   {"type": "string"},
+                "summary": {"type": "string"},
+                "topics": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title":   {"type": "string"},
+                            "content": {"type": "string"}
+                        },
+                        "required": ["title", "content"]
+                    }
+                },
+                "definitions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "term":       {"type": "string"},
+                            "definition": {"type": "string"}
+                        },
+                        "required": ["term", "definition"]
+                    }
+                },
+                "formulas":      {"type": "array", "items": {"type": "string"}},
+                "examples":      {"type": "array", "items": {"type": "string"}},
+                "key_takeaways": {"type": "array", "items": {"type": "string"}},
+                "interview_questions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question":         {"type": "string"},
+                            "suggested_answer": {"type": "string"}
+                        },
+                        "required": ["question", "suggested_answer"]
+                    }
+                },
+                "resources": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "link":  {"type": "string"}
+                        },
+                        "required": ["title"]
+                    }
+                }
+            },
+            "required": [
+                "title", "summary", "topics", "definitions",
+                "formulas", "examples", "key_takeaways",
+                "interview_questions", "resources"
+            ]
+        },
+        "options": {
+            "temperature": settings.ollama_temperature,
+            "num_predict": max(int(settings.ollama_max_tokens), 4096),
+        },
     }
 
     logger.info("Sending inference request to Ollama [model=%s]", model)
@@ -202,7 +309,9 @@ async def generate_notes(transcript: str) -> dict[str, Any]:
     # ── Try primary model ────────────────────────────────────────
     try:
         raw = await _call_ollama(prompt, settings.ollama_primary_model)
-        return _extract_json(raw)
+        parsed = _extract_json(raw)
+        logger.debug("Parsed notes JSON keys=%s", sorted(parsed.keys()))
+        return parsed
     except OllamaConnectionError:
         raise  # Don't fallback if server is down entirely
     except OllamaServiceError as e:
@@ -216,7 +325,9 @@ async def generate_notes(transcript: str) -> dict[str, Any]:
     # ── Try fallback model ───────────────────────────────────────
     try:
         raw = await _call_ollama(prompt, settings.ollama_fallback_model)
-        return _extract_json(raw)
+        parsed = _extract_json(raw)
+        logger.debug("Parsed fallback notes JSON keys=%s", sorted(parsed.keys()))
+        return parsed
     except OllamaServiceError as e:
         raise OllamaInferenceError(
             f"Both models failed. Primary [{settings.ollama_primary_model}] "

@@ -1,564 +1,519 @@
 /**
- * NoteForge — Main Application (Phase 3)
+ * NoteForge — Main Application Logic
  */
-(function () {
-    'use strict';
 
-    const $ = (s) => document.querySelector(s);
-    const views = { landing: $('#landingView'), loading: $('#loadingView'), notes: $('#notesView'), error: $('#errorView') };
-    const urlForm = $('#urlForm'), urlInput = $('#urlInput'), submitBtn = $('#submitBtn'), langSelect = $('#langSelect');
-    const notesList = $('#notesList'), emptyState = $('#emptyState'), searchInput = $('#searchInput');
-    const sidebar = $('#sidebar'), sidebarOverlay = $('#sidebarOverlay');
-    const loadingStep = $('#loadingStep'), progressBar = $('#progressBar');
-    const notesHeader = $('#notesHeader'), notesActions = $('#notesActions'), notesContent = $('#notesContent');
-    const errorMessage = $('#errorMessage'), retryBtn = $('#retryBtn');
-    const toastContainer = $('#toastContainer');
-    const ollamaStatus = $('#ollamaStatus');
+// ── DOM References ──────────────────────────────────────────────
+const urlForm = document.getElementById('urlForm');
+const urlInput = document.getElementById('urlInput');
+const langSelect = document.getElementById('langSelect');
+const submitBtn = document.getElementById('submitBtn');
+const notesList = document.getElementById('notesList');
+const emptyState = document.getElementById('emptyState');
+const searchInput = document.getElementById('searchInput');
+const newNoteBtn = document.getElementById('newNoteBtn');
+const retryBtn = document.getElementById('retryBtn');
+const ollamaStatus = document.getElementById('ollamaStatus');
+const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+const sidebar = document.getElementById('sidebar');
+const sidebarOverlay = document.getElementById('sidebarOverlay');
 
-    // Batch modal refs
-    const batchModal = $('#batchModal'), batchUrlsInput = $('#batchUrlsInput');
-    const batchSubmitBtn = $('#batchSubmitBtn'), batchCancelBtn = $('#batchCancelBtn');
-    const batchProgress = $('#batchProgress'), batchStatus = $('#batchStatus');
-    const batchProgressBar = $('#batchProgressBar'), batchResults = $('#batchResults');
-    const batchLangSelect = $('#batchLangSelect');
+// Views
+const landingView = document.getElementById('landingView');
+const loadingView = document.getElementById('loadingView');
+const notesView = document.getElementById('notesView');
+const errorView = document.getElementById('errorView');
+const loadingStep = document.getElementById('loadingStep');
+const progressBar = document.getElementById('progressBar');
+const notesHeader = document.getElementById('notesHeader');
+const notesActions = document.getElementById('notesActions');
+const notesContent = document.getElementById('notesContent');
+const errorMessage = document.getElementById('errorMessage');
 
-    // Quiz modal refs
-    const quizModal = $('#quizModal'), quizBody = $('#quizBody');
-    const quizLoading = $('#quizLoading'), quizTitle = $('#quizTitle');
+// Batch modal
+const batchModal = document.getElementById('batchModal');
+const batchNoteBtn = document.getElementById('batchNoteBtn');
+const batchModalClose = document.getElementById('batchModalClose');
+const batchCancelBtn = document.getElementById('batchCancelBtn');
+const batchSubmitBtn = document.getElementById('batchSubmitBtn');
+const batchUrlsInput = document.getElementById('batchUrlsInput');
+const batchLangSelect = document.getElementById('batchLangSelect');
+const batchProgress = document.getElementById('batchProgress');
+const batchStatus = document.getElementById('batchStatus');
+const batchProgressBar = document.getElementById('batchProgressBar');
+const batchResults = document.getElementById('batchResults');
 
-    let allNotes = [];
-    let activeNoteId = null;
-    let currentNote = null;
+// Quiz modal
+const quizModal = document.getElementById('quizModal');
+const quizModalClose = document.getElementById('quizModalClose');
+const quizTitle = document.getElementById('quizTitle');
+const quizBody = document.getElementById('quizBody');
+const quizLoading = document.getElementById('quizLoading');
 
-    // ── Init ────────────────────────────────────────────────
-    async function init() {
-        urlForm.addEventListener('submit', onSubmit);
-        $('#newNoteBtn').addEventListener('click', showLanding);
-        $('#mobileMenuBtn').addEventListener('click', toggleSidebar);
-        sidebarOverlay.addEventListener('click', closeSidebar);
-        retryBtn.addEventListener('click', showLanding);
-        searchInput.addEventListener('input', renderSidebar);
+const toastContainer = document.getElementById('toastContainer');
 
-        // Batch
-        $('#batchNoteBtn').addEventListener('click', () => openModal(batchModal));
-        $('#batchModalClose').addEventListener('click', () => closeModal(batchModal));
-        batchCancelBtn.addEventListener('click', () => closeModal(batchModal));
-        batchSubmitBtn.addEventListener('click', onBatchSubmit);
+// ── State ───────────────────────────────────────────────────────
+let currentNote = null;
+let activeNoteId = null;
+let allNotes = [];
+let progressInterval = null;
 
-        // Quiz
-        $('#quizModalClose').addEventListener('click', () => closeModal(quizModal));
+// ── View Management ─────────────────────────────────────────────
+function showView(name) {
+    [landingView, loadingView, notesView, errorView].forEach(v => v.classList.remove('active'));
+    const map = { landing: landingView, loading: loadingView, notes: notesView, error: errorView };
+    if (map[name]) map[name].classList.add('active');
+}
 
-        // Close modals on overlay click
-        batchModal.addEventListener('click', (e) => { if (e.target === batchModal) closeModal(batchModal); });
-        quizModal.addEventListener('click', (e) => { if (e.target === quizModal) closeModal(quizModal); });
+// ── Toast Notifications ─────────────────────────────────────────
+function toast(message, type = 'info') {
+    const el = document.createElement('div');
+    el.className = `toast toast-${type}`;
+    el.textContent = message;
+    toastContainer.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 300);
+    }, 3500);
+}
 
-        await loadNotes();
-        checkHealth();
-    }
-
-    // ── Modals ──────────────────────────────────────────────
-    function openModal(m) { m.classList.add('active'); }
-    function closeModal(m) { m.classList.remove('active'); }
-
-    // ── Views ───────────────────────────────────────────────
-    function showView(name) {
-        Object.entries(views).forEach(([k, v]) => v.classList.toggle('active', k === name));
-    }
-
-    function showLanding() {
-        activeNoteId = null; currentNote = null;
-        highlightActive();
-        showView('landing');
-        urlInput.value = '';
-        urlInput.focus();
-    }
-
-    function showError(msg) {
-        errorMessage.textContent = msg;
-        showView('error');
-    }
-
-    // ── Submit ──────────────────────────────────────────────
-    async function onSubmit(e) {
-        e.preventDefault();
-        const url = urlInput.value.trim();
-        if (!url) return;
-        const lang = langSelect.value || null;
-
-        showView('loading');
-        submitBtn.disabled = true;
-        animateProgress();
-
-        try {
-            const note = await api.generateNotes(url, lang);
-            await loadNotes();
-            activeNoteId = note.id;
-            currentNote = note;
-            renderNote(note);
-            showView('notes');
-            toast('Notes generated successfully!', 'success');
-        } catch (err) {
-            showError(err.message);
-            toast(err.message, 'error');
-        } finally {
-            submitBtn.disabled = false;
-            resetProgress();
-        }
-    }
-
-    // ── Batch Submit ────────────────────────────────────────
-    async function onBatchSubmit() {
-        const raw = batchUrlsInput.value.trim();
-        if (!raw) return;
-        const urls = raw.split('\n').map(u => u.trim()).filter(u => u.length > 5);
-        if (!urls.length) { toast('Enter at least one URL', 'error'); return; }
-        if (urls.length > 10) { toast('Maximum 10 URLs allowed', 'error'); return; }
-
-        const lang = batchLangSelect.value || null;
-        batchSubmitBtn.disabled = true;
-        batchProgress.style.display = 'block';
-        batchResults.innerHTML = '';
-        batchStatus.textContent = `Processing 0/${urls.length}...`;
-        batchProgressBar.style.width = '0%';
-
-        try {
-            const result = await api.batchGenerate(urls, lang);
-            batchProgressBar.style.width = '100%';
-            batchStatus.textContent = `Done: ${result.succeeded} succeeded, ${result.failed} failed`;
-
-            result.results.forEach(r => {
-                const el = document.createElement('div');
-                el.className = `batch-result-item ${r.status}`;
-                el.innerHTML = `
-                    <span class="batch-result-status">${r.status === 'success' ? '✅' : '❌'}</span>
-                    <span class="batch-result-url">${esc(r.youtube_url)}</span>
-                    ${r.error ? `<span class="batch-result-error">${esc(r.error)}</span>` : ''}
-                `;
-                batchResults.appendChild(el);
-            });
-
-            await loadNotes();
-            toast(`Batch complete: ${result.succeeded}/${result.total} succeeded`, 'success');
-        } catch (err) {
-            toast(err.message, 'error');
-            batchStatus.textContent = 'Batch failed';
-        } finally {
-            batchSubmitBtn.disabled = false;
-        }
-    }
-
-    // ── Progress animation ──────────────────────────────────
-    let progressInterval;
+// ── Progress Animation ──────────────────────────────────────────
+function animateProgress() {
+    let pct = 0;
     const steps = [
-        'Extracting transcript from YouTube...',
-        'Sending transcript to AI model...',
-        'Generating structured notes...',
-        'Almost done — formatting output...',
+        { at: 10, text: 'Extracting transcript from YouTube...' },
+        { at: 30, text: 'Sending transcript to AI model...' },
+        { at: 50, text: 'Generating structured notes...' },
+        { at: 70, text: 'Formatting and validating output...' },
+        { at: 85, text: 'Saving notes to database...' },
     ];
+    progressInterval = setInterval(() => {
+        if (pct < 90) pct += Math.random() * 3;
+        progressBar.style.width = pct + '%';
+        const step = [...steps].reverse().find(s => pct >= s.at);
+        if (step) loadingStep.textContent = step.text;
+    }, 600);
+}
 
-    function animateProgress() {
-        let pct = 0, step = 0;
-        progressBar.style.width = '0%';
-        loadingStep.textContent = steps[0];
-        progressInterval = setInterval(() => {
-            pct = Math.min(pct + Math.random() * 3 + 0.5, 92);
-            progressBar.style.width = pct + '%';
-            const newStep = Math.min(Math.floor(pct / 25), steps.length - 1);
-            if (newStep !== step) { step = newStep; loadingStep.textContent = steps[step]; }
-        }, 600);
+function resetProgress() {
+    clearInterval(progressInterval);
+    progressInterval = null;
+    progressBar.style.width = '0%';
+    loadingStep.textContent = 'Extracting transcript from YouTube...';
+}
+
+// ── Error Display ───────────────────────────────────────────────
+function showError(msg) {
+    errorMessage.textContent = msg;
+    showView('error');
+}
+
+// ── Date Formatting ─────────────────────────────────────────────
+function formatDate(iso) {
+    try {
+        const d = new Date(iso);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch { return ''; }
+}
+
+// ── Sidebar: Load Notes ─────────────────────────────────────────
+async function loadNotes() {
+    try {
+        allNotes = await api.listNotes();
+        renderNotesList(allNotes);
+    } catch (err) {
+        console.error('Failed to load notes list:', err);
     }
+}
 
-    function resetProgress() {
-        clearInterval(progressInterval);
-        progressBar.style.width = '100%';
-        setTimeout(() => { progressBar.style.width = '0%'; }, 400);
+function renderNotesList(notes) {
+    notesList.innerHTML = '';
+    if (!notes || notes.length === 0) {
+        notesList.appendChild(emptyState);
+        emptyState.style.display = '';
+        return;
     }
-
-    // ── Sidebar ─────────────────────────────────────────────
-    async function loadNotes() {
-        try { allNotes = await api.listNotes(); } catch { allNotes = []; }
-        renderSidebar();
-    }
-
-    function renderSidebar() {
-        const q = searchInput.value.toLowerCase();
-        const filtered = q ? allNotes.filter(n => n.title.toLowerCase().includes(q)) : allNotes;
-
-        if (!filtered.length) {
-            notesList.innerHTML = '';
-            notesList.appendChild(emptyState);
-            emptyState.style.display = 'block';
-            return;
-        }
-        emptyState.style.display = 'none';
-
-        notesList.innerHTML = filtered.map(n => `
-            <div class="note-item ${n.id === activeNoteId ? 'active' : ''}" data-id="${n.id}">
-                <div class="note-item-info">
-                    <div class="note-item-title">${esc(n.title)}</div>
-                    <div class="note-item-date">${fmtDate(n.created_at)}</div>
-                </div>
-                <button class="note-item-delete" data-id="${n.id}" title="Delete">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
-                </button>
+    emptyState.style.display = 'none';
+    notes.forEach(n => {
+        const item = document.createElement('div');
+        item.className = 'note-item' + (n.id === activeNoteId ? ' active' : '');
+        item.innerHTML = `
+            <div class="note-item-info">
+                <div class="note-item-title">${escapeHtml(n.title || 'Untitled Lecture')}</div>
+                <div class="note-item-date">${formatDate(n.created_at)}</div>
             </div>
-        `).join('');
+            <button class="note-item-delete" title="Delete note">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                    <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+                </svg>
+            </button>`;
+        item.querySelector('.note-item-info').addEventListener('click', () => openNote(n.id));
+        item.querySelector('.note-item-delete').addEventListener('click', e => { e.stopPropagation(); deleteNote(n.id); });
+        notesList.appendChild(item);
+    });
+}
 
-        notesList.querySelectorAll('.note-item').forEach(el => {
-            el.addEventListener('click', (e) => {
-                if (e.target.closest('.note-item-delete')) return;
-                openNote(el.dataset.id);
-            });
-        });
-        notesList.querySelectorAll('.note-item-delete').forEach(btn => {
-            btn.addEventListener('click', (e) => { e.stopPropagation(); deleteNote(btn.dataset.id); });
-        });
+function escapeHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+// ── Sidebar: Search ─────────────────────────────────────────────
+searchInput.addEventListener('input', () => {
+    const q = searchInput.value.trim().toLowerCase();
+    if (!q) return renderNotesList(allNotes);
+    renderNotesList(allNotes.filter(n => (n.title || '').toLowerCase().includes(q)));
+});
+
+// ── Open / Delete Note ──────────────────────────────────────────
+async function openNote(id) {
+    try {
+        const note = await api.getNote(id);
+        currentNote = note;
+        activeNoteId = id;
+        renderNote(note);
+        showView('notes');
+        renderNotesList(allNotes);
+        closeMobileSidebar();
+    } catch (err) {
+        toast('Failed to load note', 'error');
     }
+}
 
-    function highlightActive() { renderSidebar(); }
-
-    async function openNote(id) {
-        try {
-            const note = await api.getNote(id);
-            activeNoteId = id;
-            currentNote = note;
-            renderNote(note);
-            showView('notes');
-            highlightActive();
-            closeSidebar();
-        } catch (err) { toast('Failed to load note', 'error'); }
+async function deleteNote(id) {
+    if (!confirm('Delete this note?')) return;
+    try {
+        await api.deleteNote(id);
+        toast('Note deleted', 'success');
+        if (activeNoteId === id) { activeNoteId = null; currentNote = null; showView('landing'); }
+        await loadNotes();
+    } catch (err) {
+        toast('Failed to delete note', 'error');
     }
+}
 
-    async function deleteNote(id) {
-        if (!confirm('Delete this note?')) return;
-        try {
-            await api.deleteNote(id);
-            toast('Note deleted', 'success');
-            if (activeNoteId === id) showLanding();
-            await loadNotes();
-        } catch { toast('Failed to delete', 'error'); }
-    }
-
-    function toggleSidebar() { sidebar.classList.toggle('open'); sidebarOverlay.classList.toggle('active'); }
-    function closeSidebar() { sidebar.classList.remove('open'); sidebarOverlay.classList.remove('active'); }
-
-    // ── Render Note ─────────────────────────────────────────
-    function renderNote(note) {
-        const vid = note.video_id || '';
-        const thumb = vid ? `https://img.youtube.com/vi/${vid}/hqdefault.jpg` : '';
-
-        notesHeader.innerHTML = `
-            <div class="notes-header-inner">
-                ${thumb ? `<img class="notes-thumb" src="${thumb}" alt="Video thumbnail" onerror="this.style.display='none'">` : ''}
-                <div class="notes-meta">
-                    <h1 class="notes-title">${esc(note.title)}</h1>
-                    <p class="notes-summary">${esc(note.summary)}</p>
-                    ${note.youtube_url ? `<a class="notes-video-link" href="${esc(note.youtube_url)}" target="_blank" rel="noopener">▶ Watch on YouTube</a>` : ''}
-                </div>
-            </div>`;
-
-        notesActions.innerHTML = `
-            <button class="action-btn" id="copyMdBtn">📋 Copy Markdown</button>
-            <button class="action-btn" id="downloadMdBtn">⬇ Download .md</button>
-            <button class="action-btn action-btn-accent" id="exportPdfBtn">📄 Export PDF</button>
-            <button class="action-btn action-btn-quiz" id="quizMeBtn">🧠 Quiz Me</button>`;
-
-        let html = '';
-
-        if (note.topics && note.topics.length)
-            html += section('📚', 'Topics', note.topics.length,
-                note.topics.map(t => `
-                    <div class="topic-card">
-                        <div class="topic-card-title">${esc(t.title)}</div>
-                        <div class="topic-card-content">${esc(t.content)}</div>
-                        ${t.subtopics && t.subtopics.length ? `<div class="topic-subtopics">${t.subtopics.map(s => `<span class="subtopic-tag">${esc(s)}</span>`).join('')}</div>` : ''}
-                    </div>`).join(''));
-
-        if (note.definitions && note.definitions.length)
-            html += section('📖', 'Definitions', note.definitions.length,
-                `<div class="def-grid">${note.definitions.map(d => `
-                    <div class="def-item">
-                        <div class="def-term">${esc(d.term)}</div>
-                        <div class="def-text">${esc(d.definition)}</div>
-                    </div>`).join('')}</div>`);
-
-        if (note.formulas && note.formulas.length)
-            html += section('🧮', 'Formulas', note.formulas.length,
-                note.formulas.map(f => `<div class="formula-item">${esc(f)}</div>`).join(''));
-
-        if (note.examples && note.examples.length)
-            html += section('💡', 'Examples', note.examples.length,
-                note.examples.map(e => `<div class="example-item"><span class="item-bullet"></span><span>${esc(e)}</span></div>`).join(''));
-
-        if (note.key_takeaways && note.key_takeaways.length)
-            html += section('🎯', 'Key Takeaways', note.key_takeaways.length,
-                note.key_takeaways.map(k => `<div class="takeaway-item"><span class="item-bullet"></span><span>${esc(k)}</span></div>`).join(''));
-
-        if (note.interview_questions && note.interview_questions.length)
-            html += section('💼', 'Interview Questions', note.interview_questions.length,
-                note.interview_questions.map(q => `
-                    <div class="qa-item">
-                        <div class="qa-q"><span class="qa-label">Q:</span><span>${esc(q.question)}</span></div>
-                        <div class="qa-a">${esc(q.suggested_answer)}</div>
-                    </div>`).join(''));
-
-        if (note.resources && note.resources.length)
-            html += section('🔗', 'Resources', note.resources.length,
-                note.resources.map(r => `
-                    <div class="resource-item">
-                        <span class="resource-icon">📄</span>
-                        <div>
-                            <div class="resource-title">${r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.title)}</a>` : esc(r.title)}</div>
-                            ${r.link ? `<div class="resource-link">${esc(r.link)}</div>` : ''}
-                        </div>
-                    </div>`).join(''));
-
-        notesContent.innerHTML = html;
-
-        // Section collapse toggles
-        notesContent.querySelectorAll('.section-header').forEach(hdr => {
-            hdr.addEventListener('click', () => hdr.parentElement.classList.toggle('collapsed'));
-        });
-
-        // Export buttons
-        $('#copyMdBtn').addEventListener('click', () => copyMarkdown(note));
-        $('#downloadMdBtn').addEventListener('click', () => downloadMarkdown(note));
-        $('#exportPdfBtn').addEventListener('click', () => exportPDF(note));
-        $('#quizMeBtn').addEventListener('click', () => startQuiz(note));
-    }
-
-    function section(icon, title, count, body) {
-        return `<div class="section">
-            <div class="section-header">
-                <div class="section-header-left">
-                    <span class="section-icon">${icon}</span>
-                    <span class="section-title">${title}</span>
-                    <span class="section-count">${count}</span>
-                </div>
-                <span class="section-toggle">▾</span>
+// ── Render Note ─────────────────────────────────────────────────
+function renderNote(note) {
+    const thumbUrl = note.video_id ? `https://img.youtube.com/vi/${note.video_id}/mqdefault.jpg` : '';
+    notesHeader.innerHTML = `
+        <div class="notes-header-inner">
+            ${thumbUrl ? `<img class="notes-thumb" src="${thumbUrl}" alt="Video thumbnail">` : ''}
+            <div class="notes-meta">
+                <h1 class="notes-title">${escapeHtml(note.title)}</h1>
+                <p class="notes-summary">${escapeHtml(note.summary)}</p>
+                ${note.youtube_url ? `<a class="notes-video-link" href="${escapeHtml(note.youtube_url)}" target="_blank" rel="noopener">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    Watch on YouTube</a>` : ''}
             </div>
-            <div class="section-body">${body}</div>
         </div>`;
+
+    notesActions.innerHTML = `
+        <button class="action-btn" id="quizBtn" title="Generate Quiz"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Quiz Me</button>
+        <button class="action-btn" id="pdfBtn" title="Export PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Export PDF</button>`;
+
+    document.getElementById('quizBtn').addEventListener('click', () => startQuiz(note.id));
+    document.getElementById('pdfBtn').addEventListener('click', () => exportPdf(note));
+
+    let html = '';
+
+    // Topics
+    if (note.topics && note.topics.length) {
+        html += '<div class="notes-section"><h2 class="section-title">Topics</h2>';
+        note.topics.forEach(t => {
+            const title = typeof t === 'string' ? t : (t.title || '');
+            const content = typeof t === 'string' ? '' : (t.content || '');
+            const subs = (typeof t === 'object' && t.subtopics) ? t.subtopics : [];
+            html += `<div class="topic-card"><h3 class="topic-title">${escapeHtml(title)}</h3>`;
+            if (content) html += `<p class="topic-content">${escapeHtml(content)}</p>`;
+            if (subs.length) { html += '<ul class="topic-subs">'; subs.forEach(s => html += `<li>${escapeHtml(String(s))}</li>`); html += '</ul>'; }
+            html += '</div>';
+        });
+        html += '</div>';
     }
 
-    // ── Export Markdown ──────────────────────────────────────
-    function toMarkdown(n) {
-        let md = `# ${n.title}\n\n${n.summary}\n`;
-        if (n.topics?.length) { md += '\n## Topics\n'; n.topics.forEach(t => { md += `\n### ${t.title}\n${t.content}\n`; if (t.subtopics?.length) md += t.subtopics.map(s => `- ${s}`).join('\n') + '\n'; }); }
-        if (n.definitions?.length) { md += '\n## Definitions\n'; n.definitions.forEach(d => { md += `- **${d.term}**: ${d.definition}\n`; }); }
-        if (n.formulas?.length) { md += '\n## Formulas\n'; n.formulas.forEach(f => { md += `- \`${f}\`\n`; }); }
-        if (n.examples?.length) { md += '\n## Examples\n'; n.examples.forEach(e => { md += `- ${e}\n`; }); }
-        if (n.key_takeaways?.length) { md += '\n## Key Takeaways\n'; n.key_takeaways.forEach(k => { md += `- ${k}\n`; }); }
-        if (n.interview_questions?.length) { md += '\n## Interview Questions\n'; n.interview_questions.forEach(q => { md += `\n**Q: ${q.question}**\n${q.suggested_answer}\n`; }); }
-        if (n.resources?.length) { md += '\n## Resources\n'; n.resources.forEach(r => { md += `- [${r.title}](${r.link || '#'})\n`; }); }
-        return md;
+    // Definitions
+    if (note.definitions && note.definitions.length) {
+        html += '<div class="notes-section"><h2 class="section-title">Definitions</h2><div class="def-grid">';
+        note.definitions.forEach(d => {
+            const term = typeof d === 'string' ? d : (d.term || '');
+            const def = typeof d === 'string' ? '' : (d.definition || '');
+            html += `<div class="def-card"><span class="def-term">${escapeHtml(term)}</span><span class="def-text">${escapeHtml(def)}</span></div>`;
+        });
+        html += '</div></div>';
     }
 
-    function copyMarkdown(n) {
-        navigator.clipboard.writeText(toMarkdown(n)).then(() => toast('Copied to clipboard!', 'success')).catch(() => toast('Copy failed', 'error'));
+    // Formulas
+    if (note.formulas && note.formulas.length) {
+        html += '<div class="notes-section"><h2 class="section-title">Formulas</h2>';
+        note.formulas.forEach(f => html += `<div class="formula-card"><code>${escapeHtml(String(f))}</code></div>`);
+        html += '</div>';
     }
 
-    function downloadMarkdown(n) {
-        const blob = new Blob([toMarkdown(n)], { type: 'text/markdown' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `${n.title.replace(/[^a-z0-9]/gi, '_').substring(0, 50)}.md`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-        toast('Download started', 'success');
+    // Examples
+    if (note.examples && note.examples.length) {
+        html += '<div class="notes-section"><h2 class="section-title">Examples</h2><ul class="examples-list">';
+        note.examples.forEach(ex => html += `<li>${escapeHtml(String(ex))}</li>`);
+        html += '</ul></div>';
     }
 
-    // ── Export PDF ───────────────────────────────────────────
-    function exportPDF(n) {
-        try {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF({ format: 'a4', unit: 'mm' });
-            const w = doc.internal.pageSize.getWidth();
-            const margin = 16;
-            const maxW = w - margin * 2;
-            let y = 20;
+    // Key Takeaways
+    if (note.key_takeaways && note.key_takeaways.length) {
+        html += '<div class="notes-section"><h2 class="section-title">Key Takeaways</h2><ul class="takeaways-list">';
+        note.key_takeaways.forEach(kt => html += `<li>${escapeHtml(String(kt))}</li>`);
+        html += '</ul></div>';
+    }
 
-            function checkPage(needed) {
-                if (y + needed > 280) { doc.addPage(); y = 20; }
-            }
+    // Interview Questions
+    if (note.interview_questions && note.interview_questions.length) {
+        html += '<div class="notes-section"><h2 class="section-title">Interview Questions</h2>';
+        note.interview_questions.forEach(iq => {
+            const q = typeof iq === 'string' ? iq : (iq.question || '');
+            const a = typeof iq === 'string' ? '' : (iq.suggested_answer || '');
+            html += `<div class="iq-card"><div class="iq-q">${escapeHtml(q)}</div>`;
+            if (a) html += `<div class="iq-a">${escapeHtml(a)}</div>`;
+            html += '</div>';
+        });
+        html += '</div>';
+    }
 
-            // Title
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(20);
-            doc.setTextColor(124, 58, 237);
-            const titleLines = doc.splitTextToSize(n.title, maxW);
-            doc.text(titleLines, margin, y);
-            y += titleLines.length * 9 + 4;
+    // Resources
+    if (note.resources && note.resources.length) {
+        html += '<div class="notes-section"><h2 class="section-title">Resources</h2><ul class="resources-list">';
+        note.resources.forEach(r => {
+            const title = typeof r === 'string' ? r : (r.title || '');
+            const link = typeof r === 'object' ? r.link : null;
+            html += link ? `<li><a href="${escapeHtml(link)}" target="_blank" rel="noopener">${escapeHtml(title)}</a></li>` : `<li>${escapeHtml(title)}</li>`;
+        });
+        html += '</ul></div>';
+    }
 
-            // Summary
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(10);
-            doc.setTextColor(100, 100, 100);
-            const sumLines = doc.splitTextToSize(n.summary, maxW);
-            checkPage(sumLines.length * 5);
-            doc.text(sumLines, margin, y);
-            y += sumLines.length * 5 + 10;
+    notesContent.innerHTML = html;
+}
 
-            function addSection(title, items, renderItem) {
-                checkPage(15);
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(14);
-                doc.setTextColor(99, 102, 241);
-                doc.text(title, margin, y);
-                y += 8;
-                doc.setFont('helvetica', 'normal');
-                doc.setFontSize(10);
-                doc.setTextColor(50, 50, 50);
-                items.forEach(item => {
-                    const txt = renderItem(item);
-                    const lines = doc.splitTextToSize(txt, maxW - 4);
-                    checkPage(lines.length * 5 + 4);
-                    doc.text(lines, margin + 4, y);
-                    y += lines.length * 5 + 3;
-                });
-                y += 6;
-            }
+// ── Generate Notes (Form Submit) ────────────────────────────────
+async function onSubmit(e) {
+    e.preventDefault();
+    const url = urlInput.value.trim();
+    if (!url) return;
+    const lang = langSelect.value || null;
 
-            if (n.topics?.length) addSection('Topics', n.topics, t => `${t.title}: ${t.content}`);
-            if (n.definitions?.length) addSection('Definitions', n.definitions, d => `${d.term} — ${d.definition}`);
-            if (n.formulas?.length) addSection('Formulas', n.formulas, f => f);
-            if (n.examples?.length) addSection('Examples', n.examples, e => e);
-            if (n.key_takeaways?.length) addSection('Key Takeaways', n.key_takeaways, k => k);
-            if (n.interview_questions?.length) addSection('Interview Questions', n.interview_questions, q => `Q: ${q.question}\nA: ${q.suggested_answer}`);
-            if (n.resources?.length) addSection('Resources', n.resources, r => `${r.title}${r.link ? ' — ' + r.link : ''}`);
+    showView('loading');
+    submitBtn.disabled = true;
+    animateProgress();
 
-            // Footer
-            const pages = doc.internal.getNumberOfPages();
-            for (let i = 1; i <= pages; i++) {
-                doc.setPage(i);
-                doc.setFontSize(8);
-                doc.setTextColor(150);
-                doc.text(`NoteForge — ${n.title}`, margin, 290);
-                doc.text(`Page ${i}/${pages}`, w - margin - 20, 290);
-            }
-
-            doc.save(`${n.title.replace(/[^a-z0-9]/gi, '_').substring(0, 50)}.pdf`);
-            toast('PDF exported!', 'success');
-        } catch (err) {
-            console.error('PDF export failed:', err);
-            toast('PDF export failed. Check console.', 'error');
+    try {
+        const note = await api.generateNotes(url, lang);
+        if (!note || !note.id || !note.title || !note.summary) {
+            throw new Error('Backend returned incomplete note data. Check FastAPI logs.');
         }
+        currentNote = note;
+        activeNoteId = note.id;
+        await loadNotes();
+        renderNote(note);
+        showView('notes');
+        toast('Notes generated successfully!', 'success');
+    } catch (err) {
+        console.error('Generate notes failed:', err);
+        showError(err.message || 'Failed to generate notes');
+        toast(err.message || 'Failed to generate notes', 'error');
+    } finally {
+        submitBtn.disabled = false;
+        resetProgress();
     }
+}
 
-    // ── Quiz Mode ───────────────────────────────────────────
-    async function startQuiz(note) {
-        openModal(quizModal);
-        quizTitle.textContent = `Quiz: ${note.title}`;
-        quizBody.innerHTML = `<div class="quiz-loading"><div class="loading-spinner" style="width:40px;height:40px;"><div class="spinner-ring"></div><div class="spinner-ring"></div></div><p>Generating quiz questions...</p></div>`;
+// ── Quiz ────────────────────────────────────────────────────────
+async function startQuiz(noteId) {
+    quizModal.classList.add('active');
+    quizLoading.style.display = '';
+    quizBody.querySelectorAll('.quiz-question-card, .quiz-score').forEach(el => el.remove());
+    quizTitle.textContent = 'Quiz Mode';
 
-        try {
-            const quiz = await api.generateQuiz(note.id);
-            renderQuiz(quiz);
-        } catch (err) {
-            quizBody.innerHTML = `<div class="quiz-error"><p>⚠️ ${esc(err.message)}</p><button class="retry-btn" onclick="document.getElementById('quizModal').classList.remove('active')">Close</button></div>`;
-        }
+    try {
+        const data = await api.generateQuiz(noteId);
+        quizLoading.style.display = 'none';
+        quizTitle.textContent = data.note_title ? `Quiz: ${data.note_title}` : 'Quiz Mode';
+        renderQuiz(data.questions || []);
+    } catch (err) {
+        quizLoading.style.display = 'none';
+        quizBody.innerHTML += `<p style="color:var(--error);text-align:center;padding:20px;">${escapeHtml(err.message)}</p>`;
+        toast('Quiz generation failed', 'error');
     }
+}
 
-    function renderQuiz(quiz) {
-        const questions = quiz.questions;
-        let current = 0, score = 0, answered = new Set();
+function renderQuiz(questions) {
+    if (!questions.length) {
+        quizBody.innerHTML += '<p style="text-align:center;padding:20px;color:var(--text-muted);">No questions generated.</p>';
+        return;
+    }
+    let answered = 0, correct = 0;
 
-        function renderQ() {
-            const q = questions[current];
-            quizBody.innerHTML = `
-                <div class="quiz-progress-bar">
-                    <div class="quiz-progress-fill" style="width:${((current) / questions.length) * 100}%"></div>
-                </div>
-                <div class="quiz-counter">Question ${current + 1} of ${questions.length}</div>
-                <div class="quiz-question">${esc(q.question)}</div>
-                <div class="quiz-options" id="quizOptions">
-                    ${q.options.map((opt, i) => `
-                        <button class="quiz-option" data-index="${i}">${esc(opt)}</button>
-                    `).join('')}
-                </div>
-                <div class="quiz-explanation" id="quizExplanation" style="display:none;">
-                    <p>${esc(q.explanation)}</p>
-                </div>
-                <div class="quiz-nav">
-                    <div class="quiz-score">Score: ${score}/${answered.size}</div>
-                    <button class="quiz-next-btn" id="quizNextBtn" style="display:none;">${current < questions.length - 1 ? 'Next →' : 'See Results'}</button>
-                </div>
-            `;
+    questions.forEach((q, qi) => {
+        const card = document.createElement('div');
+        card.className = 'quiz-question-card';
+        let optHtml = '';
+        (q.options || []).forEach((opt, oi) => {
+            optHtml += `<button class="quiz-option" data-qi="${qi}" data-oi="${oi}">${escapeHtml(String(opt))}</button>`;
+        });
+        card.innerHTML = `<div class="quiz-q-num">Q${qi + 1}</div><div class="quiz-q-text">${escapeHtml(q.question)}</div><div class="quiz-options">${optHtml}</div><div class="quiz-explanation" style="display:none;">${escapeHtml(q.explanation || '')}</div>`;
+        quizBody.appendChild(card);
 
-            const optBtns = quizBody.querySelectorAll('.quiz-option');
-            optBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    if (answered.has(current)) return;
-                    answered.add(current);
-                    const chosen = parseInt(btn.dataset.index);
-                    const correct = q.correct_index;
+        card.querySelectorAll('.quiz-option').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (card.classList.contains('answered')) return;
+                card.classList.add('answered');
+                answered++;
+                const selected = parseInt(btn.dataset.oi);
+                const isCorrect = selected === q.correct_index;
+                if (isCorrect) correct++;
+                btn.classList.add(isCorrect ? 'correct' : 'wrong');
+                const correctBtn = card.querySelector(`.quiz-option[data-oi="${q.correct_index}"]`);
+                if (correctBtn && !isCorrect) correctBtn.classList.add('correct');
+                card.querySelector('.quiz-explanation').style.display = '';
 
-                    optBtns.forEach((b, i) => {
-                        if (i === correct) b.classList.add('correct');
-                        if (i === chosen && chosen !== correct) b.classList.add('wrong');
-                        b.disabled = true;
-                    });
-
-                    if (chosen === correct) score++;
-                    $('#quizExplanation').style.display = 'block';
-                    $('#quizNextBtn').style.display = 'inline-flex';
-                });
-            });
-
-            const nextBtn = $('#quizNextBtn');
-            nextBtn.addEventListener('click', () => {
-                if (current < questions.length - 1) {
-                    current++;
-                    renderQ();
-                } else {
-                    showQuizResults(score, questions.length);
+                if (answered === questions.length) {
+                    const score = document.createElement('div');
+                    score.className = 'quiz-score';
+                    score.innerHTML = `<h3>Score: ${correct}/${questions.length}</h3><p>${correct === questions.length ? 'Perfect!' : correct >= questions.length * 0.7 ? 'Great job!' : 'Keep studying!'}</p>`;
+                    quizBody.appendChild(score);
                 }
             });
+        });
+    });
+}
+
+// ── PDF Export ───────────────────────────────────────────────────
+function exportPdf(note) {
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        let y = 20;
+        const margin = 15;
+        const pageW = doc.internal.pageSize.getWidth() - margin * 2;
+
+        function addText(text, size, bold, color) {
+            doc.setFontSize(size);
+            if (bold) doc.setFont(undefined, 'bold'); else doc.setFont(undefined, 'normal');
+            if (color) doc.setTextColor(...color); else doc.setTextColor(33, 33, 33);
+            const lines = doc.splitTextToSize(text, pageW);
+            lines.forEach(line => {
+                if (y > 270) { doc.addPage(); y = 20; }
+                doc.text(line, margin, y);
+                y += size * 0.5;
+            });
+            y += 4;
         }
 
-        renderQ();
+        addText(note.title || 'Untitled', 18, true);
+        addText(note.summary || '', 10, false, [100, 100, 100]);
+        y += 4;
+
+        if (note.topics && note.topics.length) {
+            addText('Topics', 14, true, [108, 92, 231]);
+            note.topics.forEach(t => {
+                addText(typeof t === 'string' ? t : (t.title || ''), 11, true);
+                const c = typeof t === 'string' ? '' : (t.content || '');
+                if (c) addText(c, 10, false, [80, 80, 80]);
+            });
+            y += 2;
+        }
+
+        if (note.key_takeaways && note.key_takeaways.length) {
+            addText('Key Takeaways', 14, true, [108, 92, 231]);
+            note.key_takeaways.forEach(kt => addText('• ' + String(kt), 10, false));
+        }
+
+        doc.save(`${(note.title || 'notes').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
+        toast('PDF exported!', 'success');
+    } catch (err) {
+        console.error('PDF export failed:', err);
+        toast('PDF export failed', 'error');
     }
+}
 
-    function showQuizResults(score, total) {
-        const pct = Math.round((score / total) * 100);
-        let grade, color;
-        if (pct >= 90) { grade = 'Excellent! 🏆'; color = '#10b981'; }
-        else if (pct >= 70) { grade = 'Great job! ⭐'; color = '#3b82f6'; }
-        else if (pct >= 50) { grade = 'Good effort! 💪'; color = '#f59e0b'; }
-        else { grade = 'Keep studying! 📚'; color = '#ef4444'; }
+// ── Batch Processing ────────────────────────────────────────────
+async function onBatchSubmit() {
+    const raw = batchUrlsInput.value.trim();
+    if (!raw) return;
+    const urls = raw.split('\n').map(u => u.trim()).filter(u => u);
+    if (!urls.length) return;
+    if (urls.length > 10) { toast('Maximum 10 URLs allowed', 'error'); return; }
 
-        quizBody.innerHTML = `
-            <div class="quiz-results">
-                <div class="quiz-results-circle" style="--score-color:${color}">
-                    <div class="quiz-results-pct">${pct}%</div>
-                </div>
-                <h2 class="quiz-results-grade">${grade}</h2>
-                <p class="quiz-results-detail">You scored <strong>${score}</strong> out of <strong>${total}</strong></p>
-                <button class="modal-btn-primary" onclick="document.getElementById('quizModal').classList.remove('active')">Done</button>
-            </div>
-        `;
+    const lang = batchLangSelect.value || null;
+    batchSubmitBtn.disabled = true;
+    batchProgress.style.display = '';
+    batchStatus.textContent = `Processing ${urls.length} URLs...`;
+    batchProgressBar.style.width = '0%';
+    batchResults.innerHTML = '';
+
+    try {
+        const data = await api.batchGenerate(urls, lang);
+        batchProgressBar.style.width = '100%';
+        batchStatus.textContent = `Done: ${data.succeeded} succeeded, ${data.failed} failed`;
+
+        (data.results || []).forEach(r => {
+            const div = document.createElement('div');
+            div.className = `batch-result-item ${r.status}`;
+            div.textContent = r.status === 'success'
+                ? `✓ ${r.note?.title || r.youtube_url}`
+                : `✗ ${r.youtube_url}: ${r.error || 'Failed'}`;
+            batchResults.appendChild(div);
+        });
+
+        await loadNotes();
+        toast(`Batch complete: ${data.succeeded}/${data.total} succeeded`, data.failed ? 'warning' : 'success');
+    } catch (err) {
+        batchStatus.textContent = 'Batch failed';
+        toast(err.message || 'Batch processing failed', 'error');
+    } finally {
+        batchSubmitBtn.disabled = false;
     }
+}
 
-    // ── Health ──────────────────────────────────────────────
-    async function checkHealth() {
-        try {
-            const h = await api.health();
-            ollamaStatus.className = 'status-dot ' + (h.ollama_status === 'connected' ? 'connected' : 'disconnected');
-            ollamaStatus.title = 'Ollama: ' + h.ollama_status;
-        } catch { ollamaStatus.className = 'status-dot disconnected'; }
+// ── Mobile Sidebar ──────────────────────────────────────────────
+function toggleMobileSidebar() {
+    sidebar.classList.toggle('open');
+    sidebarOverlay.classList.toggle('active');
+}
+function closeMobileSidebar() {
+    sidebar.classList.remove('open');
+    sidebarOverlay.classList.remove('active');
+}
+
+// ── Health Check ────────────────────────────────────────────────
+async function checkHealth() {
+    try {
+        const h = await api.health();
+        ollamaStatus.className = 'status-dot ' + (h.ollama_status === 'connected' ? 'connected' : 'disconnected');
+    } catch {
+        ollamaStatus.className = 'status-dot disconnected';
     }
+}
 
-    // ── Helpers ─────────────────────────────────────────────
-    function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-    function fmtDate(iso) { try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return ''; } }
-    function toast(msg, type = '') {
-        const el = document.createElement('div');
-        el.className = `toast ${type}`;
-        el.textContent = msg;
-        toastContainer.appendChild(el);
-        setTimeout(() => { el.classList.add('fade-out'); setTimeout(() => el.remove(), 300); }, 3000);
-    }
+// ── Event Listeners ─────────────────────────────────────────────
+urlForm.addEventListener('submit', onSubmit);
+newNoteBtn.addEventListener('click', () => { showView('landing'); urlInput.focus(); closeMobileSidebar(); });
+retryBtn.addEventListener('click', () => showView('landing'));
+mobileMenuBtn.addEventListener('click', toggleMobileSidebar);
+sidebarOverlay.addEventListener('click', closeMobileSidebar);
 
-    // ── Boot ────────────────────────────────────────────────
-    document.addEventListener('DOMContentLoaded', init);
+// Batch modal
+batchNoteBtn.addEventListener('click', () => { batchModal.classList.add('active'); batchProgress.style.display = 'none'; batchResults.innerHTML = ''; });
+batchModalClose.addEventListener('click', () => batchModal.classList.remove('active'));
+batchCancelBtn.addEventListener('click', () => batchModal.classList.remove('active'));
+batchSubmitBtn.addEventListener('click', onBatchSubmit);
+
+// Quiz modal
+quizModalClose.addEventListener('click', () => quizModal.classList.remove('active'));
+
+// Close modals on overlay click
+[batchModal, quizModal].forEach(m => m.addEventListener('click', e => { if (e.target === m) m.classList.remove('active'); }));
+
+// ── Init ────────────────────────────────────────────────────────
+(async function init() {
+    await loadNotes();
+    checkHealth();
+    setInterval(checkHealth, 30000);
 })();

@@ -31,13 +31,13 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     debug: bool = False
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 8001
 
     # ── Ollama ───────────────────────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
     ollama_primary_model: str = DEFAULT_OLLAMA_MODEL
     ollama_fallback_model: str = DEFAULT_OLLAMA_MODEL
-    ollama_timeout: int = 120
+    ollama_timeout: int = 300      # ✅ Increased from 120s → 300s (5 min)
     ollama_max_tokens: int = 4096
     ollama_temperature: float = 0.3
 
@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     cors_origins: List[str] = [
         "http://localhost:3000",
         "http://localhost:8000",
+        "http://localhost:8001",
+        "http://127.0.0.1:8000",
+        "http://127.0.0.1:8001",
+        "http://127.0.0.1:5500",   # VS Code Live Server
+        "http://localhost:5500",    # VS Code Live Server alternate
+        "null",                     # file:// origin (opening HTML directly)
     ]
 
     @field_validator("debug", mode="before")

@@ -7,6 +7,7 @@ All HTTP endpoints for the notes generation system.
 import json
 import logging
 import time
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -46,6 +47,20 @@ from app.services.youtube import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _note_response_debug_payload(note: dict[str, Any]) -> dict[str, Any]:
+    """Small log-only snapshot that confirms frontend-facing fields exist."""
+    return {
+        "id": note.get("id"),
+        "video_id": note.get("video_id"),
+        "title_present": bool(note.get("title")),
+        "summary_chars": len(note.get("summary") or ""),
+        "topics": len(note.get("topics") or []),
+        "formulas": len(note.get("formulas") or []),
+        "examples": len(note.get("examples") or []),
+        "resources": len(note.get("resources") or []),
+    }
 
 
 # ── Health Check ─────────────────────────────────────────────────
@@ -116,7 +131,17 @@ async def generate_notes_endpoint(request: GenerateNotesRequest):
 
     # ── Step 2: Generate notes via Ollama ────────────────────────
     try:
+        logger.info(
+            "Starting notes generation [video=%s, transcript_chars=%d]",
+            video_id,
+            len(transcript),
+        )
         raw_notes = await generate_notes(transcript)
+        logger.debug(
+            "Raw notes parsed from LLM [video=%s, keys=%s]",
+            video_id,
+            sorted(raw_notes.keys()),
+        )
     except OllamaConnectionError as e:
         logger.error("Ollama connection failed: %s", e)
         raise HTTPException(
@@ -134,25 +159,38 @@ async def generate_notes_endpoint(request: GenerateNotesRequest):
     try:
         formatted_notes = format_notes(raw_notes)
     except FormatterError as e:
-        logger.error("Formatting failed: %s", e)
+        logger.error(
+            "Formatting failed [video=%s, raw_keys=%s]: %s",
+            video_id,
+            sorted(raw_notes.keys()) if isinstance(raw_notes, dict) else "n/a",
+            e,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"LLM produced invalid output: {e}",
         )
 
     # ── Step 4: Save to database ─────────────────────────────────
-    saved = await db_save_note(
-        video_id=video_id,
-        youtube_url=request.youtube_url,
-        notes_data=formatted_notes.model_dump(),
-    )
+    try:
+        saved = await db_save_note(
+            video_id=video_id,
+            youtube_url=request.youtube_url,
+            notes_data=formatted_notes.model_dump(),
+        )
+    except Exception as e:
+        logger.exception("Failed to save generated notes [video=%s]", video_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save generated notes: {e}",
+        )
 
     elapsed = time.time() - start_time
     logger.info(
-        "Notes generated and saved [video=%s, id=%s, time=%.2fs]",
+        "Notes generated and saved [video=%s, id=%s, time=%.2fs, response=%s]",
         video_id,
         saved["id"],
         elapsed,
+        json.dumps(_note_response_debug_payload(saved)),
     )
 
     return saved
@@ -185,7 +223,17 @@ async def batch_generate_endpoint(request: BatchGenerateRequest):
             )
 
             # Generate notes
+            logger.info(
+                "Batch: starting notes generation [video=%s, transcript_chars=%d]",
+                video_id,
+                len(transcript),
+            )
             raw_notes = await generate_notes(transcript)
+            logger.debug(
+                "Batch: raw notes parsed [video=%s, keys=%s]",
+                video_id,
+                sorted(raw_notes.keys()),
+            )
             formatted_notes = format_notes(raw_notes)
 
             # Save
@@ -203,7 +251,11 @@ async def batch_generate_endpoint(request: BatchGenerateRequest):
                 )
             )
             succeeded += 1
-            logger.info("Batch: generated notes for %s", url)
+            logger.info(
+                "Batch: generated notes for %s [response=%s]",
+                url,
+                json.dumps(_note_response_debug_payload(saved)),
+            )
 
         except Exception as e:
             results.append(

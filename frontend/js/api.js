@@ -2,6 +2,7 @@
  * NoteForge API Client
  *
  * All HTTP calls to the FastAPI backend.
+ * Uses relative paths since frontend is served by the same backend.
  */
 
 const API_BASE = '/api/v1';
