@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="assets/banner.png" alt="NoteForge Banner" width="100%" />
-</p>
+
 
 <p align="center">
   <strong>Transform YouTube lectures into structured, revision-ready study notes — powered by local AI.</strong>
@@ -28,9 +26,7 @@ NoteForge is an **AI-powered lecture intelligence system** that takes any YouTub
 
 Paste a YouTube URL. Get back organized topics, definitions, formulas, examples, key takeaways, interview questions, and curated resources. All in seconds.
 
-<p align="center">
-  <img src="assets/screenshot.png" alt="NoteForge Screenshot" width="90%" style="border-radius: 12px;" />
-</p>
+
 
 ---
 
@@ -210,10 +206,10 @@ NoteForge is designed with privacy as a core principle:
 
 ## 🗺️ Roadmap
 
-- [ ] PDF export with styled formatting
+- [x] PDF export with styled formatting
 - [ ] Batch processing (multiple URLs at once)
 - [ ] Direct video upload support (local files)
-- [ ] Quiz mode — test yourself on generated content
+- [x] Quiz mode — test yourself on generated content
 - [ ] Flashcard generation (Anki-compatible)
 - [ ] Multi-language transcript support
 - [ ] Chrome extension for one-click note generation
